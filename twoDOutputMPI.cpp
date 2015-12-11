@@ -15,13 +15,15 @@ double S(double x, double y);
 std::pair<int, int> procToLoc(int l);
 
 double a = 0.0, b=1.0, c = 0.0, d = 1.0;
-const int m=6;
-const int n=6;
-const int P = 4;
-const int rootP = 2;
+const int m=81;
+const int n=81;
+const int P = 9;
+const int rootP = 3;
 double dx=(b-a)/(m-1);
 double dy=(d-c)/(n-1);
 void printTotalGrid(double** grid);
+double time1, time2;
+
 
 
 double exactSolution(double x, double y) {
@@ -48,7 +50,7 @@ enum Direction {
 
 
 double tolerance=1E-15;
-int maxIterations=5;
+int maxIterations=1000;
 
 
 typedef struct _processor {
@@ -62,7 +64,7 @@ typedef struct _processor {
     bool commUp, commDown, commLeft, commRight;
 } proc;
 
-
+void printGrid2(proc me);
 double** totalGrid(proc);
 void procNextIter(proc* me);
 std::pair<double, double> procGetErrors(proc me);
@@ -88,18 +90,22 @@ int main(int argc, char* argv[])
     // (iterationError, solutionError) 
     std::pair<double, double> localErrors;
     double globalIterError = 1., globalSolnError = 1.;
+    time1 = MPI_Wtime(); 
 
     while (globalIterError > tolerance && iterations < maxIterations) {
+
         procTick(&me);
+
         localErrors = procGetErrors(me);
         procNextIter(&me);
         MPI_Allreduce(&localErrors.first, &globalIterError, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
         MPI_Allreduce(&localErrors.second, &globalSolnError, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
         iterations++;
         double** grid = totalGrid(me);
-        if (me.l == 0) printTotalGrid(grid); 
+     //   if (me.l == 0) printTotalGrid(grid); 
 
     }
+    time2 = MPI_Wtime();
 
     if (me.l == 0) {
         // Output:
@@ -109,6 +115,7 @@ int main(int argc, char* argv[])
         std::cout<< "The error between two iterates is "    << globalIterError << std::endl << std::endl;
         std::cout<< "The maximum error in the solution is " << globalSolnError               << std::endl;
         std::cout<< "The number of iterations is " << iterations << std::endl;
+        std::cout <<"The time taken is " << (time2 - time1) << std::endl;
         std::cout<< "-------------------------------------------------------"  << std::endl << std::endl;
     }
     /*
@@ -123,8 +130,6 @@ int main(int argc, char* argv[])
         }
     }
     */
-    double** grid = totalGrid(me);
-    if (me.l == 0) printTotalGrid(grid); 
     MPI_Finalize();
     return 0;
 }
@@ -244,6 +249,7 @@ void procTick(proc* theProc) {
         // RECEIVE
         MPI_Irecv(recvBuff[DOWN], m/rootP, MPI_DOUBLE, dest, 0, MPI_COMM_WORLD, &inReqs[DOWN]);
     }
+
     if (theProc->commLeft) {
         // SEND
         // Initialize our temporary left array if we need it.
@@ -261,7 +267,7 @@ void procTick(proc* theProc) {
         int dest = locToProc(std::make_pair(theProc->loc.first + 1, theProc->loc.second));
         int i = m/rootP - 1;
         for (int j = 1; j < n/rootP + 1; j++) {
-            tempRight[j] = Un[i][j];
+            tempRight[j - 1] = Un[i][j];
         }
         MPI_Isend(tempRight, n/rootP, MPI_DOUBLE, dest, 0, MPI_COMM_WORLD, &outReqs[RIGHT]);
 
@@ -269,6 +275,9 @@ void procTick(proc* theProc) {
         MPI_Irecv(recvBuff[RIGHT], n/rootP, MPI_DOUBLE, dest, 0, MPI_COMM_WORLD, &inReqs[RIGHT]);
 
     }
+
+
+
 
     // Update interior points
     for (int i = 1; i < m/rootP - 1; i++) {
@@ -278,6 +287,7 @@ void procTick(proc* theProc) {
                              dx*dx*(Un[i][j -1] + Un[i][j+1])) / (-2*dy*dy - 2*dx*dx);
         }
     }
+
     
     // Update exterior points if we need to. If we don't, they're boundary conditions
     if (theProc->commUp) {
@@ -285,7 +295,7 @@ void procTick(proc* theProc) {
         MPI_Wait(&inReqs[UP], MPI_STATUS_IGNORE);
 
         
-        int j = 1;
+        int j = 0;
         // Update edges
         for (int i = 0; i < m/rootP; i++) {
             Un[i][j] = recvBuff[UP][i];
@@ -295,12 +305,15 @@ void procTick(proc* theProc) {
         // We are updating the first row MINUS THE CORNERS !!!
         j = 1;
         for (int i = 1; i < m/rootP - 1; i++) {
+
             // There are negative indexes here, but that's fine because our grid is padded.
             Unp1[i][j] = (dy*dy*dx*dx*S(x(i, theProc->l), y(j - 1, theProc->l)) - \
                              dy*dy*(Un[i -1][j] + Un[i + 1][j]) - \
                              dx*dx*(Un[i][j -1] + Un[i][j+1])) / (-2*dy*dy - 2*dx*dx);
         }
     }
+
+
     if (theProc->commDown) {
         // Block on reception 
         MPI_Wait(&inReqs[DOWN], MPI_STATUS_IGNORE);
@@ -321,6 +334,8 @@ void procTick(proc* theProc) {
                              dx*dx*(Un[i][j -1] + Un[i][j+1])) / (-2*dy*dy - 2*dx*dx);
         }
     }
+
+
     if (theProc->commLeft) {
         // Block on reception 
         MPI_Wait(&inReqs[LEFT], MPI_STATUS_IGNORE);
@@ -340,6 +355,7 @@ void procTick(proc* theProc) {
                              dx*dx*(Un[i][j -1] + Un[i][j+1])) / (-2*dy*dy - 2*dx*dx);
         }
     }
+    
     if (theProc->commRight) {
         // Block on reception 
         MPI_Wait(&inReqs[RIGHT], MPI_STATUS_IGNORE);
@@ -358,6 +374,10 @@ void procTick(proc* theProc) {
                              dx*dx*(Un[i][j -1] + Un[i][j+1])) / (-2*dy*dy - 2*dx*dx);
         }
     }
+
+
+
+
     // Update corners. NO need for corner updatei f they aren't communicating as they are boundary conditions.
     // Top left
     if (theProc->commUp and theProc->commLeft) {
@@ -436,6 +456,15 @@ void printGrid(proc me) {
     for (int i = 0; i < m/rootP + 2; i++) {
         for (int j = 0; j < n/rootP + 2; j++) {
             std::cout << std::setw(10) << me.Un[j][i] << " ";
+        }
+        std::cout << std::endl;
+    }
+}
+void printGrid2(proc me) {
+    std::cout << "Printing grid for proc: " << me.l << std::endl;
+    for (int i = 0; i < m/rootP + 2; i++) {
+        for (int j = 0; j < n/rootP + 2; j++) {
+            std::cout << std::setw(10) << me.Unp1[j][i] << " ";
         }
         std::cout << std::endl;
     }

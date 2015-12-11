@@ -13,11 +13,11 @@ double exactSolution(double x, double y);
 double S(double x, double y);                 
 
 double a = 0.0, b=1.0, c = 0.0, d = 1.0;
-const int m=6;
-const int n=6;
+const int m=81;
+const int n=81;
 
 double tolerance=1E-15;
-int maxIterations=1;
+int maxIterations=1000;
 
 double dx=(b-a)/(m-1);
 double dy=(d-c)/(n-1);
@@ -61,6 +61,7 @@ int main(int argc, char* argv[])
         std::cout<<"iteration " << iterations << std::endl;
         for(int i=1; i< m-1; i++){
             for (int j = 1; j < n -1; j++) {
+                if (i == 4 and j == 3)
 
                 Unp1[i][j] = (dy*dy*dx*dx*S(x(i), y(j)) - \
                              dy*dy*(Un[i -1][j] + Un[i + 1][j]) - \
@@ -69,13 +70,6 @@ int main(int argc, char* argv[])
         }
 
 
-        std::cout << "Printing grid " << std::endl;
-        for (int i = 0; i < m; i++) {
-            for (int j = 0; j < n; j++) {
-                std::cout << std::setw(12) << Unp1[j][i] << " ";
-            }
-            std::cout << std::endl;
-        }
         iterationError=0.0;
         // Calculate diff between Un, Up+1
 // Testing revealed it was faster to *NOT* parallelize this loop.
@@ -134,15 +128,9 @@ int main(int argc, char* argv[])
     std::cout<< "The error between two iterates is "    << iterationError << std::endl << std::endl;
     std::cout<< "The maximum error in the solution is " << solution_error               << std::endl;
     std::cout<< "The number of iterations is " << iterations << std::endl;
+    std::cout <<"THe amount of time taken is " << (time2 - time) << std::endl;
     std::cout<< "-------------------------------------------------------"  << std::endl << std::endl;
 
-    std::cout << "Printing grid " << std::endl;
-    for (int i = 0; i < m; i++) {
-        for (int j = 0; j < n; j++) {
-            std::cout << std::setw(12) << Unp1[j][i] << " ";
-        }
-        std::cout << std::endl;
-    }
 
     /*
     std::ofstream outputFile;
