@@ -50,7 +50,7 @@ enum Direction {
 
 
 double tolerance=1E-15;
-int maxIterations=1000;
+int maxIterations=1000000;
 
 
 typedef struct _processor {
@@ -72,7 +72,7 @@ proc procInit(int l);
 void procTick(proc*);
 double finalGrid [m][n];
 void printGrid(proc me);
-
+double procGetError(proc me);
 int main(int argc, char* argv[])
 {
     MPI_Init(NULL, NULL);
@@ -91,22 +91,25 @@ int main(int argc, char* argv[])
     std::pair<double, double> localErrors;
     double globalIterError = 1., globalSolnError = 1.;
     time1 = MPI_Wtime(); 
+    double** grid;
 
     while (globalIterError > tolerance && iterations < maxIterations) {
 
         procTick(&me);
 
-        localErrors = procGetErrors(me);
+        localErrors.first = procGetError(me);
         procNextIter(&me);
         MPI_Allreduce(&localErrors.first, &globalIterError, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-        MPI_Allreduce(&localErrors.second, &globalSolnError, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
         iterations++;
-        double** grid = totalGrid(me);
+
      //   if (me.l == 0) printTotalGrid(grid); 
 
     }
     time2 = MPI_Wtime();
+    localErrors = procGetErrors(me);
 
+    MPI_Allreduce(&localErrors.second, &globalSolnError, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    grid = totalGrid(me);
     if (me.l == 0) {
         // Output:
         std::cout                                                              << std::endl << std::endl;
@@ -119,17 +122,20 @@ int main(int argc, char* argv[])
         std::cout<< "-------------------------------------------------------"  << std::endl << std::endl;
     }
     /*
-    std::ofstream outputFile;
-    outputFile.open("output.csv");
-    std::ofstream outputExact;
-    outputExact.open("outputExact.csv");
-    for (int i = 0; i < m; i++) {
-        for (int j = 0; j < n; j++) {
-            outputFile << x(i) << ',' << y(j) << ',' << Unp1[i][j] << std::endl; 
-            outputExact << x(i) << ',' << y(j) << ',' << exactSolution(x(i), y(j)) << std::endl; 
+    if (me.l == 0) {    
+        std::ofstream outputFile;
+        outputFile.open("parallel_output.csv");
+        std::ofstream outputExact;
+        outputExact.open("outputExact.csv");
+        for (int i = 0; i < m; i++) {
+            for (int j = 0; j < n; j++) {
+                outputFile << x(i) << ',' << y(j) << ',' << grid[i][j] << std::endl; 
+                outputExact << x(i) << ',' << y(j) << ',' << exactSolution(x(i), y(j)) << std::endl; 
+            }
         }
     }
     */
+    
     MPI_Finalize();
     return 0;
 }
@@ -450,6 +456,20 @@ std::pair<double, double> procGetErrors(proc me) {
     }
     return std::make_pair(iterationError, solutionError);
 }
+double procGetError(proc me) {
+    double iterationError = 0.0;
+    for(int i = 1; i< m/rootP + 1; i++){
+        for (int j = 1; j < n/rootP + 1; j++) {
+            double localError = fabs(me.Unp1[i][j] - me.Un[i][j]);
+            if (localError > iterationError) {
+                iterationError = localError;
+            }
+
+
+         }
+    }
+    return iterationError;
+}
 
 void printGrid(proc me) {
     std::cout << "Printing grid for proc: " << me.l << std::endl;
@@ -510,11 +530,11 @@ void printTotalGrid(double** grid) {
         std::cout << std::endl;
     }
 }
-
             
 
-
-
-
-
-
+double x(int i) {
+    return a+i*dx;
+}
+double y(int n) {
+    return c + n*dx;
+}

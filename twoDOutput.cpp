@@ -1,11 +1,9 @@
 #include <stdlib.h>
-#include <iomanip>
 #include <math.h>
 #include <iostream>
 #include <stdio.h>
 #include <omp.h>
 #include <fstream>
-#include <utility>
 
 double x(int i);                    
 double y(int i);
@@ -17,7 +15,7 @@ const int m=81;
 const int n=81;
 
 double tolerance=1E-15;
-int maxIterations=1000;
+int maxIterations=1000000;
 
 double dx=(b-a)/(m-1);
 double dy=(d-c)/(n-1);
@@ -53,36 +51,28 @@ int main(int argc, char* argv[])
     }
     int iterations=0;
     double iterationError = 1.;
-
-    std::pair<double, double> errorLoc;
     double time = omp_get_wtime();
     while(iterationError > tolerance && iterations < maxIterations){
         iterations++; // 
-        std::cout<<"iteration " << iterations << std::endl;
+        // if(iterations % 1000 == 0) std::cout<<"iteration " << iterations << std::endl;
         for(int i=1; i< m-1; i++){
             for (int j = 1; j < n -1; j++) {
-                if (i == 4 and j == 3)
 
                 Unp1[i][j] = (dy*dy*dx*dx*S(x(i), y(j)) - \
                              dy*dy*(Un[i -1][j] + Un[i + 1][j]) - \
                              dx*dx*(Un[i][j -1] + Un[i][j+1])) / (-2*dy*dy - 2*dx*dx);
             }
         }
-
-
         iterationError=0.0;
         // Calculate diff between Un, Up+1
 // Testing revealed it was faster to *NOT* parallelize this loop.
         for(int i = 0; i< m; i++){
             for (int j = 0; j < n; j++) {
                 double localError = fabs(Unp1[i][j] - Un[i][j]);
-                if (localError > iterationError) { 
-                
-                    iterationError = localError;
-                   errorLoc = std::make_pair(x(i), y(j));
-                }
+                {
+                    iterationError = (localError > iterationError ? localError : iterationError);
 
-               
+                }
              }
             
         }
@@ -93,29 +83,16 @@ int main(int argc, char* argv[])
             }
         }
 
-        std::cout<< "The error between two iterates is " << iterationError << std::endl;
-
-        std::cout<< "Located at : " << errorLoc.first << "," << errorLoc.second << std::endl;
-        /*std::cout << "Printing grid " << std::endl;
-        for (int i = 0; i < m; i++) {
-            for (int j = 0; j < n; j++) {
-                std::cout << std::setw(12) << Unp1[j][i] << " ";
-            }
-        std::cout << std::endl;
-        } */
+        // if(iterations % 1000 == 0) std::cout<< "The error between two iterates is " << iterationError << std::endl;
     }
     double time2 = omp_get_wtime();
     double solution_error=0.0;
-
     for(int i = 0; i < m; i++){
         for (int j = 0; j < n; j++) {
             double local_solution_error=fabs(Unp1[i][j]- exactSolution(x(i), y(j)) );
             {
-                if (local_solution_error > solution_error) {
+                if (local_solution_error > solution_error)
                    solution_error = local_solution_error;
-
-                
-                }
             }
         }
     }
@@ -127,23 +104,21 @@ int main(int argc, char* argv[])
     std::cout<< "SUMMARY:"                                                 << std::endl << std::endl;
     std::cout<< "The error between two iterates is "    << iterationError << std::endl << std::endl;
     std::cout<< "The maximum error in the solution is " << solution_error               << std::endl;
-    std::cout<< "The number of iterations is " << iterations << std::endl;
-    std::cout <<"THe amount of time taken is " << (time2 - time) << std::endl;
+    std::cout<< "The time taken is " << time2 - time << std::endl;
     std::cout<< "-------------------------------------------------------"  << std::endl << std::endl;
-
-
-    /*
+   /* 
     std::ofstream outputFile;
-    outputFile.open("output.csv");
-    std::ofstream outputExact;
-    outputExact.open("outputExact.csv");
+    outputFile.open("serial_output.csv");
+    //std::ofstream outputExact;
+    //outputExact.open("outputExact.csv");
     for (int i = 0; i < m; i++) {
         for (int j = 0; j < n; j++) {
             outputFile << x(i) << ',' << y(j) << ',' << Unp1[i][j] << std::endl; 
-            outputExact << x(i) << ',' << y(j) << ',' << exactSolution(x(i), y(j)) << std::endl; 
-        }
+       //     outputExact << x(i) << ',' << y(j) << ',' << exactSolution(x(i), y(j)) << std::endl; 
+       */
+       }
     }
-    */
+   
     return 0;
 }
 double exactSolution(double x, double y) {
@@ -159,6 +134,4 @@ double y(int n) {
 double S(double x, double y) {
         return -sin(x) - sin(y);
 }
-
-
 
